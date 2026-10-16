@@ -1,7 +1,23 @@
 let conjugaisons = {};
 
 async function chargerJSON() {
-  conjugaisons = await fetch("conjugaisons.json").then((r) => r.json());
+  try {
+    const response = await fetch(new URL("conjugaisons.json", document.baseURI));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    // Le fichier est une liste de verbes : on l'indexe par infinitif
+    conjugaisons = {};
+    (Array.isArray(data) ? data : Object.values(data)).forEach(verbe => {
+      const inf = verbe?.Infinitif?.["Présent"]?.[0];
+      if (inf && !conjugaisons[inf.toLowerCase()]) conjugaisons[inf.toLowerCase()] = verbe;
+    });
+    return true;
+  } catch (error) {
+    conjugaisons = {};
+    const zone = document.getElementById("resultat");
+    if (zone) zone.textContent = "La base de conjugaisons est indisponible. Ouvre ce projet avec un serveur local.";
+    return false;
+  }
 }
 
 /* ── Fuzzy / Tolerant search ── */
@@ -108,7 +124,7 @@ function renderHistory() {
   const hist = getHistory();
   list.innerHTML = hist.length === 0
     ? '<span style="opacity:.4;font-size:.85rem">Aucun historique</span>'
-    : hist.map(v => `<button onclick="document.getElementById('inputVerbe').value='${v}';document.getElementById('analyser').click()" style="padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#b0b0b0;cursor:pointer;font-size:.78rem">${v}</button>`).join('');
+    : hist.map(v => `<button onclick="document.getElementById('inputVerbe').value='${v}';document.getElementById('analyser').click()" style="padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:var(--ui-muted);cursor:pointer;font-size:.78rem">${v}</button>`).join('');
 }
 
 /* ── Favorites (localStorage) ── */
@@ -126,13 +142,7 @@ function renderFavs() {
   if (!list) return;
   const favs = getFavs();
   list.innerHTML = favs.length === 0 ? '<span style="opacity:.4;font-size:.85rem">Aucun favori</span>' :
-    favs.map(v => `<button onclick="document.getElementById('inputVerbe').value='${v}';document.getElementById('analyser').click()" style="padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#e0e0e0;cursor:pointer;font-size:.82rem">${v}</button>`).join('');
-}
-
-async function enregistrerNotFound(verbe) {
-  try {
-    await fetch("/notfound", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verbe }) });
-  } catch (_error) {}
+    favs.map(v => `<button onclick="document.getElementById('inputVerbe').value='${v}';document.getElementById('analyser').click()" style="padding:4px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--ui-text);cursor:pointer;font-size:.82rem">${v}</button>`).join('');
 }
 
 function afficher(resultats, verbe) {
@@ -145,12 +155,11 @@ function afficher(resultats, verbe) {
 
   if (resultats.length === 0) {
     zone.textContent = `Verbe non trouvé: ${verbe}`;
-    enregistrerNotFound(verbe);
   } else {
     // Fav button
     const favBtn = document.createElement("button");
     favBtn.textContent = getFavs().includes(verbe) ? "💖 Retirer des favoris" : "⭐ Ajouter aux favoris";
-    favBtn.style.cssText = "padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#e0e0e0;cursor:pointer;font-size:.82rem;margin-bottom:10px";
+    favBtn.style.cssText = "padding:6px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--ui-text);cursor:pointer;font-size:.82rem;margin-bottom:10px";
     favBtn.onclick = () => { toggleFav(verbe); afficher(resultats, verbe); };
     zone.appendChild(favBtn);
 
@@ -165,7 +174,7 @@ function afficher(resultats, verbe) {
         bloc.style.opacity = ".7";
       } else if (r.type === "conjugue") {
         let tempsFormate = r.temps.toLowerCase() === "imparfait" ? `à l'<strong>${r.temps}</strong>` : `au <strong>${r.temps}</strong>`;
-        bloc.innerHTML = `<strong>${r.verbe}</strong> est conjugué ${tempsFormate} de l'<strong>${r.mode}</strong> à la ${r.personne}e personne <em>(${r.infinitif})</em>.`;
+        bloc.innerHTML = `<strong>${r.verbe}</strong> est conjugué ${tempsFormate} ${/^[aeiouyéèêiî]/i.test(r.mode) ? "de l'" : 'du '}<strong>${r.mode}</strong> à la ${r.personne}e personne <em>(${r.infinitif})</em>.`;
       }
 
       zone.appendChild(bloc);
@@ -189,9 +198,9 @@ function afficherConjugaison(infinitif, pronominal) {
 
   // Tab bar
   let tabBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
-  if (infMode) tabBar += `<button class="conj-tab active" data-mode="${infMode}" style="padding:5px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(108,92,231,.25);color:#a29bfe;cursor:pointer;font:inherit;font-size:.82rem;font-weight:600">${infMode}</button>`;
+  if (infMode) tabBar += `<button class="conj-tab active" data-mode="${infMode}" style="padding:5px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:var(--ui-accent-soft);color:var(--ui-accent-2);cursor:pointer;font:inherit;font-size:.82rem;font-weight:600">${infMode}</button>`;
   modes.forEach((m, i) => {
-    tabBar += `<button class="conj-tab${i === 0 && !infMode ? ' active' : ''}" data-mode="${m}" style="padding:5px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#e0e0e0;cursor:pointer;font:inherit;font-size:.82rem">${m}</button>`;
+    tabBar += `<button class="conj-tab${i === 0 && !infMode ? ' active' : ''}" data-mode="${m}" style="padding:5px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--ui-text);cursor:pointer;font:inherit;font-size:.82rem">${m}</button>`;
   });
   tabBar += `</div>`;
 
@@ -225,11 +234,11 @@ function afficherConjugaison(infinitif, pronominal) {
     btn.addEventListener('click', () => {
       zone.querySelectorAll('.conj-tab').forEach(b => {
         b.style.background = 'rgba(255,255,255,.04)';
-        b.style.color = '#e0e0e0';
+        b.style.color = 'var(--ui-text)';
         b.style.border = '1px solid rgba(255,255,255,.1)';
       });
-      btn.style.background = 'rgba(108,92,231,.25)';
-      btn.style.color = '#a29bfe';
+      btn.style.background = 'var(--ui-accent-soft)';
+      btn.style.color = 'var(--ui-accent-2)';
       btn.style.border = '1px solid rgba(255,255,255,.15)';
       zone.querySelectorAll('.conj-panel').forEach(p => p.style.display = 'none');
       const panel = zone.querySelector(`.conj-panel[data-mode="${btn.dataset.mode}"]`);
@@ -250,7 +259,8 @@ function updateAutocomplete(query) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  await chargerJSON();
+  const loaded = await chargerJSON();
+  if (!loaded) return;
   const bouton = document.getElementById("analyser");
   const input = document.getElementById("inputVerbe");
   const btnConj = document.getElementById("btn-conjugate");
